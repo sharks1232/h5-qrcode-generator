@@ -406,7 +406,7 @@
         <label for="photoInput">📷 选择照片</label>
         <button class="photo-btn" id="clearPhoto" type="button">清除</button>
         <input type="file" id="photoInput" accept="image/*">
-        <small class="tip">照片会上传到服务器并生成链接,扫码后任何人都能看见</small>
+        <small class="tip">照片直传 Cloudinary 并生成链接,扫码后任何人都能看见</small>
       </div>
     </div>
   </div>
@@ -655,13 +655,15 @@ $('photoInput').addEventListener('change', function(e) {
 function uploadPhoto(blob) {
   toast('正在上传照片...');
   $('photoPreview').innerHTML = '<span>上传中...</span>';
+  // 纯静态方案: 浏览器直传 Cloudinary, 不依赖任何后端(可部署到任意静态托管)
   var fd = new FormData();
-  fd.append('photo', blob, 'photo.jpg');
-  fetch('/upload', { method: 'POST', body: fd })
+  fd.append('file', blob);
+  fd.append('upload_preset', 'health_cert_unsigned'); // 在 Cloudinary 控制台创建「unsigned」上传预设
+  fetch('https://api.cloudinary.com/v1_1/nk1d3fkr/image/upload', { method: 'POST', body: fd })
     .then(function(res) { return res.json(); })
     .then(function(data) {
-      if (!data.ok) throw new Error(data.error || '上传失败');
-      photoDataUrl = data.url;  // 存公网 URL
+      if (!data.secure_url) throw new Error((data.error && data.error.message) || '上传失败');
+      photoDataUrl = data.secure_url;  // 存公网 URL
       $('photoPreview').innerHTML = '<img src="' + photoDataUrl + '">';
       renderQr();              // 重新生成二维码(把 photo URL 编进去)
       toast('照片已上传并加入二维码');
