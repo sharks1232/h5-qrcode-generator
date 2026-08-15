@@ -1,0 +1,14 @@
+{
+  "name": "h5-qrcode-generator",
+  "version": "1.0.0",
+  "description": "H5 健康证明二维码生成器 (Express + Cloudinary + Vercel)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cloudinary": "^2.5.1",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
