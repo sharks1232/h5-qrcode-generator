@@ -173,7 +173,7 @@
     border: 1px solid #e3f2fd;
     border-radius: 10px;
     margin-bottom: 12px;
-    min-height: 220px;
+    min-height: 260px;
   }
   #qrcode img { display: block; }
   .qr-placeholder { color: #b0bec5; font-size: 13px; line-height: 1.6; }
@@ -493,6 +493,18 @@ function escapeHtml(s) {
   });
 }
 
+/* UTF-8 → base64url(紧凑,二维码更密也能扫) */
+function utf8ToBase64url(str) {
+  var utf8 = unescape(encodeURIComponent(str));
+  return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64urlToObj(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  var json = decodeURIComponent(escape(atob(s)));
+  return JSON.parse(json);
+}
+
 /* ============ 状态 ============ */
 var photoDataUrl = '';   // 照片 base64 (不进二维码,只用于本机预览)
 var lastQrDataUrl = '';  // 最近一次生成的二维码 dataURL,供下载用
@@ -513,19 +525,17 @@ function collectForm() {
   };
 }
 
-/* 构造证书页 URL (二维码内容) — 包含照片 URL(如有) */
+/* 构造证书页 URL (二维码内容) — 紧凑 base64url 编码,避免二维码过密扫不出 */
 function buildCertUrl(data, skipPhoto) {
   data = data || collectForm();
-  var params = new URLSearchParams();
-  params.set('cert', '1');
-  for (var k in data) {
-    // genDesc 不传证书页(只是生成器自己的副标题)
-    if (k === 'genDesc') continue;
-    if (data[k] && k !== 'photo') params.set(k, data[k]);
-  }
-  if (!skipPhoto && photoDataUrl) params.set('photo', photoDataUrl);
-  // 必须用绝对 URL!微信扫一扫只认 http:// 开头,纯 /path 会识别成根路径
-  return location.origin + location.pathname + '?' + params.toString();
+  var o = {
+    t1: data.title1, t2: data.title2, n: data.name, s: data.sex,
+    i: data.id, d: data.date, o: data.org, v: data.valid, st: data.status
+  };
+  if (!skipPhoto && photoDataUrl) o.ph = photoDataUrl;
+  var enc = utf8ToBase64url(JSON.stringify(o));
+  // 必须用绝对 URL!微信扫一扫只认 http(s):// 开头
+  return location.origin + location.pathname + '?d=' + enc;
 }
 
 /* 构造编辑链接 (生成器端回填用,不在证书页显示) */
@@ -543,7 +553,7 @@ function buildEditUrl(data) {
 function makeQrDataUrl(text, pixelSize) {
   pixelSize = pixelSize || 6;  // 每模块像素数
   try {
-    var qr = qrcode(0, 'M');   // typeNumber=0 自动, 纠错级别 M
+    var qr = qrcode(0, 'L');   // typeNumber=0 自动, 纠错级别 L(容量更大→模块更少→更易扫)
     qr.addData(text);
     qr.make();
     var count = qr.getModuleCount();
@@ -598,8 +608,8 @@ function renderQr() {
     lastQrDataUrl = dataUrl;
     var img = document.createElement('img');
     img.src = dataUrl;
-    img.style.width = '220px';
-    img.style.height = '220px';
+    img.style.width = '260px';
+    img.style.height = '260px';
     img.alt = '健康证明二维码';
     box.appendChild(img);
   } catch (e) {
@@ -743,7 +753,27 @@ function showCertPage(data) {
   // 如果没传 data,尝试从 URL 读
   if (!data) {
     var params = new URLSearchParams(location.search);
-    if (params.get('cert') === '1') {
+    if (params.get('d')) {
+      try {
+        var o = base64urlToObj(params.get('d'));
+        data = {
+          genTitle: (o.t1 || '') + (o.t2 || ''),
+          title1: o.t1 || '广东省食品从业人员',
+          title2: o.t2 || '健康证明验证',
+          name:   o.n  || '-',
+          sex:    o.s  || '-',
+          id:     o.i  || '-',
+          date:   o.d  || '-',
+          org:    o.o  || '-',
+          valid:  o.v  || '壹年',
+          status: o.st || '验证有效',
+          photo:  o.ph || ''
+        };
+      } catch (e) {
+        data = collectForm();
+      }
+    } else if (params.get('cert') === '1') {
+      // 兼容旧格式
       data = {
         genTitle: params.get('genTitle') || '',
         title1: params.get('title1') || '广东省食品从业人员',
@@ -836,8 +866,8 @@ window.addEventListener('DOMContentLoaded', function() {
 
   var params = new URLSearchParams(location.search);
 
-  // 场景1: 扫码进入证书页 (?cert=1) — 只读,无修改入口
-  if (params.get('cert') === '1') {
+  // 场景1: 扫码进入证书页 (?d= 或旧格式 ?cert=1) — 只读,无修改入口
+  if (params.get('d') || params.get('cert') === '1') {
     showCertPage();
     return;
   }
